@@ -1,23 +1,5 @@
-Tools for computing distributed representtion of words
-------------------------------------------------------
 
-We provide an implementation of the Continuous Bag-of-Words (CBOW) and the Skip-gram model (SG), as well as several demo scripts.
-
-Given a text corpus, the word2vec tool learns a vector for every word in the vocabulary using the Continuous
-Bag-of-Words or the Skip-Gram neural network architectures. The user should to specify the following:
- - desired vector dimensionality
- - the size of the context window for either the Skip-Gram or the Continuous Bag-of-Words model
- - training algorithm: hierarchical softmax and / or negative sampling
- - threshold for downsampling the frequent words 
- - number of threads to use
- - the format of the output word vector file (text or binary)
-
-Usually, the other hyper-parameters such as the learning rate do not need to be tuned for different training sets. 
-
-The script demo-word.sh downloads a small (100MB) text corpus from the web, and trains a small word vector model. After the training
-is finished, the user can interactively explore the similarity of the words.
-
-More information about the scripts is provided at https://code.google.com/p/word2vec/
+补充：上述代码只有word2vec.c是有效文件，可以在CLion中直接运行，即可获取到exe文件，即可进行模型训练。
 
 1.上述代码需要编译，因为是c文件，所以编译后展现为exe文件才可以运行。编译最好使用CLion，是JetBrains全家桶系列，用的比较舒服。因此后期更改完成之后，可以进行编译后再次运行。
 2.对于代码的负采样公式的解读：https://blog.csdn.net/google19890102/article/details/51887344
@@ -93,11 +75,11 @@ const int table_size = 1e8;
 int *table;
 
 // 按论文的描述，生成采样序列
-// 1, 划分长度为1的线段为table_size（table_size应远大于词典大小）；
+// 1, 划分长度为1的线段为table_size（table_size应远大于词典大小，原因是这样就可以在一个采样段内打更多的点，采样性能得到保障，或个图就明白了，如图一）；
 // 2, 按0.75的幂经验值，依据词频，将每个单词分配至若干段上（词频越大，分配到的段越多），则随机取若干个段，则必能取到若干个词；
 // 3, 幂0.75的一个解释：假设，is在语料库的词频是0.9，Constitution是0.09，bombastic是0.01，其各自的3/4次幂分别是0.92，0.16和0.032；
 // 4, 因此，使用3/4次幂负采样到bombastic的概率相比之前增大3倍。即，在词频越大，分配到的段阅读的基础上，低频词更容易被采样到。
-void InitUnigramTable() {
+void InitUnigramTable() {   // 这个采样方法在文件tf_skip_gram内部采用python进行了实现，可以对照着c的版本进行研究，面试常问，又称  齐夫采样。
   int a, i;
   double train_words_pow = 0;
   double d1, power = 0.75;
@@ -110,9 +92,9 @@ void InitUnigramTable() {
   // 分段打点，将一个单词打点到多个段上
   for (a = 0; a < table_size; a++) {
     table[a] = i;
-    if (a / (double)table_size > d1) {
+    if (a / (double)table_size > d1) {   // 进行了归一化之后映射到 0-1空间进行比较  构造打点表  然后进行取样映射
       i++;
-      d1 += pow(vocab[i].cn, power) / train_words_pow;
+      d1 += pow(vocab[i].cn, power) / train_words_pow;  
     }
     if (i >= vocab_size) i = vocab_size - 1;
   }
@@ -122,13 +104,13 @@ void InitUnigramTable() {
 void ReadWord(char *word, FILE *fin) {
   int a = 0, ch;
   while (!feof(fin)) {
-    ch = fgetc(fin);
+    ch = fgetc(fin);    // 在mac里面这种函数的f去掉才能运行的=通，函数变成了  getc，表示从fin文件流里面获取到一个字符
     if (ch == 13) continue;
     if ((ch == ' ') || (ch == '\t') || (ch == '\n')) {
       // 单词后有分隔符，取出单词，回退换行
 	  if (a > 0) {
 		// 最后一个字符是换行符号，回退一格
-        if (ch == '\n') ungetc(ch, fin);
+        if (ch == '\n') ungetc(ch, fin);    // 将字符回退到流中，或者说将字符回退到文件中，同时当前文件的指针回退一个字符
         break;
       }
 	  // 如果仅为换行，填充</s>
@@ -139,7 +121,7 @@ void ReadWord(char *word, FILE *fin) {
     }
     word[a] = ch;
     a++;
-	// 截断超过MAX_STRING个字节的单词
+	// 截断超过MAX_STRING个字节的单词   好像没有必要，但是还没有看出来原因
     if (a >= MAX_STRING - 1) a--;
   }
   word[a] = 0;
@@ -421,7 +403,7 @@ void ReadVocab() {
 // allocate 1 KB along a 256-byte boundary
 // ret = posix_memalign(&buf, 256, 1024);
 
-// syn0：词向量矩阵
+// syn0：词向量矩阵   
 // syn1：层次softmax的权重矩阵
 // syn1neg：负采样的权重矩阵
 
